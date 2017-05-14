@@ -8,8 +8,8 @@ from google.cloud import speech
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
-FRAMES_PER_BUFFER = 2048
-RECORD_SECONDS = 5
+FRAMES_PER_BUFFER = 1024
+RECORD_SECONDS = 10
  
 # Instantiates a speech service client
 speech_client = speech.Client()
