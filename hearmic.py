@@ -1,4 +1,5 @@
 import pyaudio
+import audioop
  
 # Import the Google Cloud client library
 from google.cloud import speech
