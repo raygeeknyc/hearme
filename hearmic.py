@@ -1,5 +1,6 @@
-import collections
+import Queue
 import threading
+import sys
 import pyaudio
 import audioop
  
@@ -14,37 +15,6 @@ RATE = 16000
 FRAMES_PER_BUFFER = 1024
 RECORD_SECONDS = 10
  
-# Instantiates a speech service client
-speech_client = speech.Client()
-
-print "initializing pyaudio"
-audio = pyaudio.PyAudio()
- 
-print "opening audio"
-# Start Recording
-stream = audio.open(format=FORMAT, channels=CHANNELS,
-                rate=RATE, input=True,
-                frames_per_buffer=FRAMES_PER_BUFFER)
-
-print "capturing"
-frames=collections.queue()
-soundprocessor = thread.Thread(target=processSoundBites, args=(frames,))
-
-try:
-    while True:
-        soundbite = []
-        for i in range(0, int((RECORD_SECONDS * RATE / FRAMES_PER_BUFFER) + 0.5)):
-            data = stream.read(FRAMES_PER_BUFFER)
-            soundbite.append(data)
-        print "finished recording %d frames" % len(frames)
-        frames.append(soundbite)
-except KeyboardInterrupt:
-    # stop Recording
-    stream.stop_stream()
-    stream.close()
-    audio.terminate()
-    sys.exit()
-
 def processSoundBites(soundBites):
     while True:
         print "Sampling content"
@@ -54,7 +24,7 @@ def processSoundBites(soundBites):
         while not soundbites.empty():
             content += b''.join(soundbites.get(false))
         audio_sample = speech_client.sample(
-            content=content
+            content=content,
             source_uri=None,
             encoding=speech.encoding.Encoding.LINEAR16,
             sample_rate_hertz=RATE)
@@ -69,3 +39,36 @@ def processSoundBites(soundBites):
             for alternative in alternatives:
                 print('Transcript: {}'.format(alternative.transcript))
                 print('Confidence: {}'.format(alternative.confidence))
+
+# Instantiates a speech service client
+speech_client = speech.Client()
+
+print "initializing pyaudio"
+audio = pyaudio.PyAudio()
+ 
+print "opening audio"
+# Start Recording
+stream = audio.open(format=FORMAT, channels=CHANNELS,
+                rate=RATE, input=True,
+                frames_per_buffer=FRAMES_PER_BUFFER)
+
+print "capturing"
+frames=Queue.Queue()
+soundprocessor = threading.Thread(target=processSoundBites, args=(frames,))
+
+try:
+    while True:
+        soundbite = []
+        for i in range(0, int((RECORD_SECONDS * RATE / FRAMES_PER_BUFFER) + 0.5)):
+            data = stream.read(FRAMES_PER_BUFFER)
+            soundbite.append(data)
+        print "finished recording %d frames" % len(frames)
+        frames.append(soundbite)
+except KeyboardInterrupt:
+    print "ending"
+    # stop Recording
+    stream.stop_stream()
+    stream.close()
+    audio.terminate()
+    sys.exit()
+
