@@ -1,3 +1,5 @@
+import collections
+import threading
 import pyaudio
 import audioop
  
@@ -19,37 +21,51 @@ print "initializing pyaudio"
 audio = pyaudio.PyAudio()
  
 print "opening audio"
-# start Recording
+# Start Recording
 stream = audio.open(format=FORMAT, channels=CHANNELS,
                 rate=RATE, input=True,
                 frames_per_buffer=FRAMES_PER_BUFFER)
 
 print "capturing"
-frames = []
-for i in range(0, int((RECORD_SECONDS * RATE / FRAMES_PER_BUFFER) + 0.5)):
-    data = stream.read(FRAMES_PER_BUFFER)
-    frames.append(data)
-print "finished recording %d frames" % len(frames)
+frames=collections.queue()
+soundprocessor = thread.Thread(target=processSoundBites, args=(frames,))
 
-print "Sampling content"
-audio_sample = speech_client.sample(
-    content=b''.join(frames),
-    source_uri=None,
-    encoding=speech.encoding.Encoding.LINEAR16,
-    sample_rate_hertz=RATE)
+try:
+    while True:
+        soundbite = []
+        for i in range(0, int((RECORD_SECONDS * RATE / FRAMES_PER_BUFFER) + 0.5)):
+            data = stream.read(FRAMES_PER_BUFFER)
+            soundbite.append(data)
+        print "finished recording %d frames" % len(frames)
+        frames.append(soundbite)
+except KeyboardInterrupt:
+    # stop Recording
+    stream.stop_stream()
+    stream.close()
+    audio.terminate()
+    sys.exit()
 
-# stop Recording
-stream.stop_stream()
-stream.close()
-audio.terminate()
+def processSoundBites(soundBites):
+    while True:
+        print "Sampling content"
+        # Block until there's a soundbite in the queue
+        content = b''.join(soundbites.get(True))
+        # Append any additional soundbites in the queue
+        while not soundbites.empty():
+            content += b''.join(soundbites.get(false))
+        audio_sample = speech_client.sample(
+            content=content
+            source_uri=None,
+            encoding=speech.encoding.Encoding.LINEAR16,
+            sample_rate_hertz=RATE)
 
-# Find transcriptions of the audio content
-alternatives = audio_sample.recognize('en-US')
+        # Find transcriptions of the audio content
+        alternatives = audio_sample.recognize('en-US')
 
-#print "Found %d alternative transcripts:" % len(alternatives)
-if not alternatives:
-    print "no results"
-else:
-    for alternative in alternatives:
-        print('Transcript: {}'.format(alternative.transcript))
-        print('Confidence: {}'.format(alternative.confidence))
+        if not alternatives:
+            print "no results"
+        else:
+            print "Found %d transcripts:" % len(alternatives)
+            for alternative in alternatives:
+                print('Transcript: {}'.format(alternative.transcript))
+                print('Confidence: {}'.format(alternative.confidence))
