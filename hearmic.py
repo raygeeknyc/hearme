@@ -17,12 +17,15 @@ RECORD_SECONDS = 10
  
 def processSoundBites(soundBites):
     while True:
-        print "Sampling content"
+        bite_count = 0
         # Block until there's a soundbite in the queue
-        content = b''.join(soundbites.get(True))
+        content = b''.join(soundBites.get(True))
+        bite_count += 1
         # Append any additional soundbites in the queue
-        while not soundbites.empty():
-            content += b''.join(soundbites.get(false))
+        while not soundBites.empty():
+            content += b''.join(soundBites.get(false))
+            bite_count += 1
+        print "Sampling content from %d soundbites" % bite_count
         audio_sample = speech_client.sample(
             content=content,
             source_uri=None,
@@ -55,15 +58,16 @@ stream = audio.open(format=FORMAT, channels=CHANNELS,
 print "capturing"
 frames=Queue.Queue()
 soundprocessor = threading.Thread(target=processSoundBites, args=(frames,))
-
+soundprocessor.start()
 try:
     while True:
         soundbite = []
         for i in range(0, int((RECORD_SECONDS * RATE / FRAMES_PER_BUFFER) + 0.5)):
             data = stream.read(FRAMES_PER_BUFFER)
             soundbite.append(data)
-        print "finished recording %d frames" % len(frames)
-        frames.append(soundbite)
+        print "finished recording %d frames" % len(soundbite)
+        frames.put(soundbite)
+
 except KeyboardInterrupt:
     print "ending"
     # stop Recording
