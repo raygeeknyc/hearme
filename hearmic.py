@@ -12,36 +12,54 @@ from google.cloud import speech
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
-FRAMES_PER_BUFFER = 1024
-RECORD_SECONDS = 10
+FRAMES_PER_BUFFER = 2048
+RECORD_SECONDS = 5
+END_MESSAGE = "Abort!Abort!Abort!"
  
-def processSoundBites(soundBites):
-    while True:
+def processSoundBites(soundBites,transcript):
+    shutdown = False
+    while not shutdown:
         bite_count = 0
         # Block until there's a soundbite in the queue
-        content = b''.join(soundBites.get(True))
-        bite_count += 1
+        utterance = soundBites.get(True)
+        print "Processing sound"
+        if utterance == END_MESSAGE:
+            print "stopping sound processor"
+            shutdown = True
+            content = ''
+        else:
+            content = b''.join(utterance.queue)
+            bite_count += 1
         # Append any additional soundbites in the queue
         while not soundBites.empty():
-            content += b''.join(soundBites.get(false))
-            bite_count += 1
-        print "Sampling content from %d soundbites" % bite_count
-        audio_sample = speech_client.sample(
-            content=content,
-            source_uri=None,
-            encoding=speech.encoding.Encoding.LINEAR16,
-            sample_rate_hertz=RATE)
+            utterance = soundBites.get(False)
+            if utterance == END_MESSAGE:
+                print "stopping sound processor"
+                shutdown = True
+            else:
+                content += b''.join(utterance.queue)
+                bite_count += 1
+        if bite_count:
+            print "Sampling content from %d soundbites" % bite_count
+            audio_sample = speech_client.sample(
+                content=content,
+                source_uri=None,
+                encoding=speech.encoding.Encoding.LINEAR16,
+                sample_rate_hertz=RATE)
 
-        # Find transcriptions of the audio content
-        alternatives = audio_sample.recognize('en-US')
-
-        if not alternatives:
-            print "no results"
-        else:
-            print "Found %d transcripts:" % len(alternatives)
-            for alternative in alternatives:
-                print('Transcript: {}'.format(alternative.transcript))
-                print('Confidence: {}'.format(alternative.confidence))
+            # Find transcriptions of the audio content
+            try:
+                alternatives = audio_sample.recognize('en-US')
+            except ValueError:
+                alternatives = None
+            if not alternatives:
+                print "no results"
+            else:
+                print "Found %d transcripts:" % len(alternatives)
+                for alternative in alternatives:
+                    print('Transcript: {}'.format(alternative.transcript))
+                    print('Confidence: {}'.format(alternative.confidence))
+                    transcript.put(alternative.transcript)
 
 # Instantiates a speech service client
 speech_client = speech.Client()
@@ -57,22 +75,28 @@ stream = audio.open(format=FORMAT, channels=CHANNELS,
 
 print "capturing"
 frames=Queue.Queue()
-soundprocessor = threading.Thread(target=processSoundBites, args=(frames,))
+transcript = Queue.Queue()
+soundprocessor = threading.Thread(target=processSoundBites, args=(frames,transcript,))
 soundprocessor.start()
 try:
     while True:
-        soundbite = []
+        soundbite = Queue.Queue()
         for i in range(0, int((RECORD_SECONDS * RATE / FRAMES_PER_BUFFER) + 0.5)):
             data = stream.read(FRAMES_PER_BUFFER)
-            soundbite.append(data)
-        print "finished recording %d frames" % len(soundbite)
+            soundbite.put(data)
+        print "finished recording %d frames" % len(soundbite.queue)
         frames.put(soundbite)
 
 except KeyboardInterrupt:
     print "ending"
+    if soundbite:
+        frames.put(soundbite)
     # stop Recording
     stream.stop_stream()
     stream.close()
     audio.terminate()
+    frames.put(END_MESSAGE)
+    print "Waiting for processor to exit"
+    soundprocessor.join()
+    print "Transcript %s" % " ".join(transcript.queue)
     sys.exit()
-
