@@ -16,6 +16,8 @@ FRAMES_PER_BUFFER = 1024
 MAX_SOUNDBITE_SECS = 10
 SILENCE_THRESHOLD = 4
 END_MESSAGE = "Abort!Abort!Abort!"
+PAUSE_LENGTH_SECS = 1
+PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0.5)
  
 def processSoundBites(soundBites,transcript):
     shutdown = False
@@ -82,6 +84,7 @@ soundprocessor.start()
 try:
     while True:
         soundbite = Queue.Queue()
+        consecutive_silent_samples = 0
         volume = 0
         while volume <= SILENCE_THRESHOLD:
             data = stream.read(FRAMES_PER_BUFFER)
@@ -90,7 +93,14 @@ try:
         remaining_samples = int((MAX_SOUNDBITE_SECS * RATE / FRAMES_PER_BUFFER) + 0.5) - 1
         for i in range(0, remaining_samples):
             data = stream.read(FRAMES_PER_BUFFER)
+            volume = max(data)
+            if volume <= SILENCE_THRESHOLD:
+                consecutive_silent_samples += 1
+            else:
+                consecutive_silent_samples = 0
             soundbite.put(data)
+            if consecutive_silent_samples >= PAUSE_LENGTH_IN_SAMPLES:
+                break
         print "finished recording %d frames" % len(soundbite)
         frames.put(soundbite)
 except KeyboardInterrupt:
