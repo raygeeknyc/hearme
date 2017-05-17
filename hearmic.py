@@ -1,4 +1,5 @@
 import Queue
+from array import array
 import threading
 import sys
 import pyaudio
@@ -12,9 +13,9 @@ from google.cloud import speech
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
-FRAMES_PER_BUFFER = 1024
+FRAMES_PER_BUFFER = 2048
 MAX_SOUNDBITE_SECS = 10
-SILENCE_THRESHOLD = 4
+SILENCE_THRESHOLD = 500
 END_MESSAGE = "Abort!Abort!Abort!"
 PAUSE_LENGTH_SECS = 1
 PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0.5)
@@ -23,15 +24,16 @@ def processSoundBites(soundBites,transcript):
     shutdown = False
     while not shutdown:
         bite_count = 0
+        content = ''
         # Block until there's a soundbite in the queue
         utterance = soundBites.get(True)
         print "Processing sound"
         if utterance == END_MESSAGE:
             print "stopping sound processor"
             shutdown = True
-            content = ''
         else:
-            content = b''.join(utterance.queue)
+            for chunk in utterance.queue:
+                content += chunk.tostring()
             bite_count += 1
         # Append any additional soundbites in the queue
         while not soundBites.empty():
@@ -40,7 +42,8 @@ def processSoundBites(soundBites,transcript):
                 print "stopping sound processor"
                 shutdown = True
             else:
-                content += b''.join(utterance.queue)
+                for chunk in utterance.queue:
+                    content += chunk.tostring()
                 bite_count += 1
         if bite_count:
             print "Sampling content from %d soundbites" % bite_count
@@ -53,7 +56,7 @@ def processSoundBites(soundBites,transcript):
             # Find transcriptions of the audio content
             try:
                 alternatives = audio_sample.recognize('en-US')
-            except ValueError:
+            except:
                 alternatives = None
             if not alternatives:
                 print "no results"
@@ -87,12 +90,13 @@ try:
         consecutive_silent_samples = 0
         volume = 0
         while volume <= SILENCE_THRESHOLD:
-            data = stream.read(FRAMES_PER_BUFFER)
+            data = array('h', stream.read(FRAMES_PER_BUFFER))
             volume = max(data)
         soundbite.put(data)
+        print "soundbite started"
         remaining_samples = int((MAX_SOUNDBITE_SECS * RATE / FRAMES_PER_BUFFER) + 0.5) - 1
         for i in range(0, remaining_samples):
-            data = stream.read(FRAMES_PER_BUFFER)
+            data = array('h', stream.read(FRAMES_PER_BUFFER))
             volume = max(data)
             if volume <= SILENCE_THRESHOLD:
                 consecutive_silent_samples += 1
@@ -100,8 +104,9 @@ try:
                 consecutive_silent_samples = 0
             soundbite.put(data)
             if consecutive_silent_samples >= PAUSE_LENGTH_IN_SAMPLES:
+                print "pause detected"
                 break
-        print "finished recording %d frames" % len(soundbite)
+        print "finished recording %d frames" % len(soundbite.queue)
         frames.put(soundbite)
 except KeyboardInterrupt:
     print "ending"
