@@ -13,7 +13,8 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 FRAMES_PER_BUFFER = 1024
-RECORD_SECONDS = 10
+MAX_SOUNDBITE_SECS = 10
+SILENCE_THRESHOLD = 4
  
 def processSoundBites(soundBites):
     while True:
@@ -59,10 +60,16 @@ soundprocessor = threading.Thread(target=processSoundBites, args=(frames,))
 try:
     while True:
         soundbite = []
-        for i in range(0, int((RECORD_SECONDS * RATE / FRAMES_PER_BUFFER) + 0.5)):
+        volume = 0
+        while volume <= SILENCE_THRESHOLD:
+            data = stream.read(FRAMES_PER_BUFFER)
+            volume = max(data)
+        soundbite.append(data)
+        remaining_samples = int((MAX_SOUNDBITE_SECS * RATE / FRAMES_PER_BUFFER) + 0.5) - 1
+        for i in range(0, remaining_samples):
             data = stream.read(FRAMES_PER_BUFFER)
             soundbite.append(data)
-        print "finished recording %d frames" % len(frames)
+        print "finished recording %d frames" % len(soundbite)
         frames.append(soundbite)
 except KeyboardInterrupt:
     print "ending"
