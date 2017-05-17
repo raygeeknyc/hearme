@@ -92,8 +92,8 @@ try:
         while volume <= SILENCE_THRESHOLD:
             data = array('h', stream.read(FRAMES_PER_BUFFER))
             volume = max(data)
-        soundbite.put(data)
         print "soundbite started"
+        soundbite.put(data)
         remaining_samples = int((MAX_SOUNDBITE_SECS * RATE / FRAMES_PER_BUFFER) + 0.5) - 1
         for i in range(0, remaining_samples):
             data = array('h', stream.read(FRAMES_PER_BUFFER))
