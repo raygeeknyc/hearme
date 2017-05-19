@@ -1,5 +1,6 @@
-from multiprocessing import Process, Queue
+import Queue
 from array import array
+import threading
 import sys
 import pyaudio
 import audioop
@@ -79,9 +80,9 @@ stream = audio.open(format=FORMAT, channels=CHANNELS,
                 frames_per_buffer=FRAMES_PER_BUFFER)
 
 print "capturing"
-frames=Queue()
+frames=Queue.Queue()
 transcript = Queue.Queue()
-soundprocessor = Process(target=processSoundBites, args=(frames,transcript,))
+soundprocessor = threading.Thread(target=processSoundBites, args=(frames,transcript,))
 soundprocessor.start()
 try:
     while True:
