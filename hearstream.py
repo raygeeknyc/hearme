@@ -22,19 +22,27 @@ def transcribe_streaming(input_stream):
     speech_client = speech.Client()
 
     audio_sample = speech_client.sample(
-        stream=audio_stream,
+        stream=buf,
         encoding=speech.encoding.Encoding.LINEAR16,
         sample_rate_hertz=16000)
-    alternatives = audio_sample.streaming_recognize('en-US')
+    alternatives = audio_sample.streaming_recognize('en-US',
+        interim_results=True)
 
-    while not input.stream.EOF:
-        data = input.stream.read()
-        audio.stream.write(data)
-        for alternative in alternatives:
-            print('Finished: {}'.format(alternative.is_final))
-            print('Stability: {}'.format(alternative.stability))
-            print('Confidence: {}'.format(alternative.confidence))
-            print('Transcript: {}'.format(alternative.transcript))
+    while True:
+        print "reading chunk"
+        data=input_stream.read(512)
+        if not data: break
+        print "writing data %d" % len(data)
+        buf.write(data)
+ 
+    print "done reading"
+    buf.flush()
+    for alternative in alternatives:
+        print('Finished: {}'.format(alternative.is_final))
+        print('Stability: {}'.format(alternative.stability))
+        print('Confidence: {}'.format(alternative.confidence))
+        print('Transcript: {}'.format(alternative.transcript))
+    print "done with results"
 
 if __name__ == '__main__':
     transcribe_streaming(sys.stdin)
