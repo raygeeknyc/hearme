@@ -16,9 +16,8 @@ import sys
 
 def transcribe_streaming(input_stream):
     """Streams transcription of the given audio file."""
-    audio_stream = io.BytesIO()
-    buf = io.BufferedRandom(audio_stream)
     from google.cloud import speech
+    buf = StreamRW()
     speech_client = speech.Client()
 
     audio_sample = speech_client.sample(
