@@ -13,11 +13,12 @@
 
 import io
 import sys
+from streamrw import StreamRW
 
 def transcribe_streaming(input_stream):
     """Streams transcription of the given audio file."""
     from google.cloud import speech
-    buf = StreamRW()
+    buf = StreamRW(io.BytesIO())
     speech_client = speech.Client()
 
     audio_sample = speech_client.sample(
