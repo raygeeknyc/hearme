@@ -14,35 +14,46 @@
 import io
 import sys
 from streamrw import StreamRW
+import threading
+import time
 
-def transcribe_streaming(input_stream):
+def transcribe_streaming(audio_stream):
     """Streams transcription of the given audio file."""
     from google.cloud import speech
-    buf = StreamRW(io.BytesIO())
     speech_client = speech.Client()
 
     audio_sample = speech_client.sample(
-        stream=buf,
+        stream=audio_stream,
         encoding=speech.encoding.Encoding.LINEAR16,
         sample_rate_hertz=16000)
-    alternatives = audio_sample.streaming_recognize('en-US',
-        interim_results=True)
+    while not _stop:
+        print "checking"
+        alternatives = audio_sample.streaming_recognize('en-US',
+            interim_results=True)
 
-    while True:
-        print "reading chunk"
-        data=input_stream.read(512)
-        if not data: break
-        print "writing data %d" % len(data)
-        buf.write(data)
- 
-    print "done reading"
-    buf.flush()
-    for alternative in alternatives:
-        print('Finished: {}'.format(alternative.is_final))
-        print('Stability: {}'.format(alternative.stability))
-        print('Confidence: {}'.format(alternative.confidence))
-        print('Transcript: {}'.format(alternative.transcript))
+        for alternative in alternatives:
+            print('Finished: {}'.format(alternative.is_final))
+            print('Stability: {}'.format(alternative.stability))
+            print('Confidence: {}'.format(alternative.confidence))
+            print('Transcript: {}'.format(alternative.transcript))
     print "done with results"
 
 if __name__ == '__main__':
-    transcribe_streaming(sys.stdin)
+    audio_file = io.open(sys.argv[1],'rb')
+    audio_stream = StreamRW(io.BytesIO())
+    _stop = False
+    soundprocessor = threading.Thread(target=transcribe_streaming, args=(audio_stream,))
+    soundprocessor.start()
+    data = audio_file.read(256)
+    chunks = 0
+    while data:
+        audio_stream.write(data)
+        chunks += 1
+        if not chunks % 10:
+            audio_stream.flush()
+        data=audio_file.read(256)
+    audio_file.close()
+    time.sleep(5)
+    _stop = True
+    soundprocessor.join()
+    audio_stream.close()
