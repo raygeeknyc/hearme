@@ -1,4 +1,3 @@
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -17,33 +16,43 @@ from streamrw import StreamRW
 import threading
 import time
 
-def transcribe_streaming(audio_stream):
-    """Streams transcription of the given audio file."""
-    from google.cloud import speech
-    speech_client = speech.Client()
+class SpeechProcessor:
+    def __init__(self):
+        self._stop = False
 
-    audio_sample = speech_client.sample(
-        stream=audio_stream,
-        encoding=speech.encoding.Encoding.LINEAR16,
-        sample_rate_hertz=16000)
-    while not _stop:
-        print "checking"
-        alternatives = audio_sample.streaming_recognize('en-US',
-            interim_results=True)
+    def stop(self):
+        self._stop = True
 
-        for alternative in alternatives:
-            print('Finished: {}'.format(alternative.is_final))
-            print('Stability: {}'.format(alternative.stability))
-            print('Confidence: {}'.format(alternative.confidence))
-            print('Transcript: {}'.format(alternative.transcript))
-    print "done with results"
+    def transcribe_streaming(self, audio_stream):
+        """Streams transcription of the given audio file."""
+        from google.cloud import speech
+        speech_client = speech.Client()
+
+        audio_sample = speech_client.sample(
+            stream=audio_stream,
+            encoding=speech.encoding.Encoding.LINEAR16,
+            sample_rate_hertz=16000)
+        print "Sampling"
+        while True:
+            print "recognizing"
+            alternatives = audio_sample.streaming_recognize('en-US',
+                interim_results=True)
+
+            for alternative in alternatives:
+                print('Finished: {}'.format(alternative.is_final))
+                print('Stability: {}'.format(alternative.stability))
+                print('Confidence: {}'.format(alternative.confidence))
+                if alternative.is_final: print('Transcript: {}'.format(alternative.transcript))
+            if self._stop:
+                break
+        print "done with results"
 
 if __name__ == '__main__':
     audio_file = io.open(sys.argv[1],'rb')
     audio_stream = StreamRW(io.BytesIO())
-    _stop = False
-    soundprocessor = threading.Thread(target=transcribe_streaming, args=(audio_stream,))
-    soundprocessor.start()
+    speechProcessor = SpeechProcessor()
+    soundthread = threading.Thread(target=speechProcessor.transcribe_streaming, args=(audio_stream,))
+    soundthread.start()
     data = audio_file.read(256)
     chunks = 0
     while data:
@@ -54,6 +63,7 @@ if __name__ == '__main__':
         data=audio_file.read(256)
     audio_file.close()
     time.sleep(5)
-    _stop = True
-    soundprocessor.join()
+    print "stopping"
+    speechProcessor.stop()
+    soundthread.join()
     audio_stream.close()
