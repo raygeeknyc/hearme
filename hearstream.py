@@ -26,13 +26,13 @@ class SpeechProcessor:
     def transcribe_streaming(self, audio_stream):
         """Streams transcription of the given audio file."""
         from google.cloud import speech
+        print "Setting up recognition"
         speech_client = speech.Client()
 
         audio_sample = speech_client.sample(
             stream=audio_stream,
             encoding=speech.encoding.Encoding.LINEAR16,
             sample_rate_hertz=16000)
-        print "Sampling"
         while True:
             print "recognizing"
             alternatives = audio_sample.streaming_recognize('en-US',
@@ -53,8 +53,9 @@ if __name__ == '__main__':
     speechProcessor = SpeechProcessor()
     soundthread = threading.Thread(target=speechProcessor.transcribe_streaming, args=(audio_stream,))
     soundthread.start()
-    data = audio_file.read(256)
+    time.sleep(5)
     chunks = 0
+    data = audio_file.read(256)
     while data:
         audio_stream.write(data)
         chunks += 1
