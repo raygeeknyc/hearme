@@ -22,6 +22,7 @@ PAUSE_LENGTH_SECS = 1
 PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0.5)
  
 def processSound(audio_stream, transcript):
+    speech_client = speech.Client()
     audio_sample = speech_client.sample(
         stream=audio_stream,
         source_uri=None,
@@ -29,27 +30,25 @@ def processSound(audio_stream, transcript):
         sample_rate_hertz=RATE)
 
     while not audio_stream.closed:
-        logging.debug(".")
         # Find transcriptions of the audio content
         try:
             alternatives = audio_sample.streaming_recognize('en-US',
                 interim_results=True)
         except Exception, e:
-            logging.debug("Recognition raised {}".format(e))
+            logging.error("Recognition raised {}".format(e))
             alternatives = None
         if not alternatives:
-            print "no results"
+            logging.debug("no results")
         else:
             for alternative in alternatives:
-                print('Transcript: {}'.format(alternative.transcript))
-                print('Confidence: {}'.format(alternative.confidence))
-                transcript.put(alternative.transcript)
+                logging.debug('Transcript: {}'.format(alternative.transcript))
+                logging.debug('Confidence: {}'.format(alternative.confidence))
+                if alternative.is_final:
+                    transcript.put(alternative.transcript)
     logging.debug("audio stream closed")
 
 logging.getLogger().setLevel(logging.DEBUG)
 
-# Instantiates a speech service client
-speech_client = speech.Client()
 
 print "initializing pyaudio"
 audio = pyaudio.PyAudio()
@@ -66,38 +65,36 @@ transcript = Queue.Queue()
 soundprocessor = threading.Thread(target=processSound, args=(audio_stream,transcript,))
 soundprocessor.start()
 try:
+    logging.debug("initial sample, waiting for sound")
     consecutive_silent_samples = 0
     volume = 0
     # Wait for sound
     while volume <= SILENCE_THRESHOLD:
         data = array('h', stream.read(FRAMES_PER_BUFFER))
         volume = max(data)
-    print "sound started"
-    audio_stream.write(data)
+    logging.debug("sound heard")
+    w = audio_stream.write(data)
     audio_stream.flush()
     while True:
-        samples = int((MAX_SOUNDBITE_SECS * RATE / FRAMES_PER_BUFFER) + 0.5)
-        for i in range(0, samples):
-            data = array('h', stream.read(FRAMES_PER_BUFFER))
-            volume = max(data)
-            if volume <= SILENCE_THRESHOLD:
-                consecutive_silent_samples += 1
-            else:
-                consecutive_silent_samples = 0
-            audio_stream.write(data)
-            audio_stream.flush()
-            if consecutive_silent_samples >= PAUSE_LENGTH_IN_SAMPLES:
-                print "pause detected"
-                break
+        data = array('h', stream.read(FRAMES_PER_BUFFER))
+        volume = max(data)
+        if volume <= SILENCE_THRESHOLD:
+            consecutive_silent_samples += 1
+        else:
+            consecutive_silent_samples = 0
+        w = audio_stream.write(data)
+        audio_stream.flush()
+        if consecutive_silent_samples >= PAUSE_LENGTH_IN_SAMPLES:
+            logging.debug("pause detected")
 except KeyboardInterrupt:
-    print "ending"
+    logging.info("ending")
     # Close the recognizer's stream
     audio_stream.close()
     # Stop Recording
     stream.stop_stream()
     stream.close()
     audio.terminate()
-    print "Waiting for processor to exit"
+    logging.debug("Waiting for processor to exit")
     soundprocessor.join()
-    print "Transcript %s" % " ".join(transcript.queue)
+    print "Transcript %s" % ";".join(transcript.queue)
     sys.exit()
