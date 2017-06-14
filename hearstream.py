@@ -33,11 +33,10 @@ class SpeechProcessor:
             stream=audio_stream,
             encoding=speech.encoding.Encoding.LINEAR16,
             sample_rate_hertz=16000)
+
         while True:
-            print "recognizing"
             alternatives = audio_sample.streaming_recognize('en-US',
                 interim_results=True)
-
             for alternative in alternatives:
                 print('Finished: {}'.format(alternative.is_final))
                 print('Stability: {}'.format(alternative.stability))
@@ -53,7 +52,7 @@ if __name__ == '__main__':
     speechProcessor = SpeechProcessor()
     soundthread = threading.Thread(target=speechProcessor.transcribe_streaming, args=(audio_stream,))
     soundthread.start()
-    time.sleep(5)
+    time.sleep(2)
     chunks = 0
     data = audio_file.read(256)
     while data:
@@ -63,7 +62,6 @@ if __name__ == '__main__':
             audio_stream.flush()
         data=audio_file.read(256)
     audio_file.close()
-    time.sleep(5)
     print "stopping"
     speechProcessor.stop()
     soundthread.join()

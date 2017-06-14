@@ -1,4 +1,5 @@
 import Queue
+import time
 from array import array
 import threading
 import sys
@@ -18,10 +19,11 @@ RATE = 16000
 FRAMES_PER_BUFFER = 2048
 MAX_SOUNDBITE_SECS = 10
 SILENCE_THRESHOLD = 500
-PAUSE_LENGTH_SECS = 1
+PAUSE_LENGTH_SECS = 0.7
 PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0.5)
  
 def processSound(audio_stream, transcript):
+    global stop
     speech_client = speech.Client()
     audio_sample = speech_client.sample(
         stream=audio_stream,
@@ -29,40 +31,41 @@ def processSound(audio_stream, transcript):
         encoding=speech.encoding.Encoding.LINEAR16,
         sample_rate_hertz=RATE)
 
-    while not audio_stream.closed:
-        # Find transcriptions of the audio content
+    alternatives = audio_sample.streaming_recognize('en-US',
+        interim_results=True)
+    while not stop:
         try:
-            alternatives = audio_sample.streaming_recognize('en-US',
-                interim_results=True)
-        except Exception, e:
-            logging.error("Recognition raised {}".format(e))
-            alternatives = None
-        if not alternatives:
-            logging.debug("no results")
-        else:
+            # Find transcriptions of the audio content
             for alternative in alternatives:
                 logging.debug('Transcript: {}'.format(alternative.transcript))
                 logging.debug('Confidence: {}'.format(alternative.confidence))
                 if alternative.is_final:
                     transcript.put(alternative.transcript)
-    logging.debug("audio stream closed")
+        except ValueError, e:
+            logging.debug("processor: end of audio")
+            stop = True
+        except Exception, e:
+            logging.error("Recognition raised {}".format(e))
+    logging.debug("processor audio stream closed")
 
 logging.getLogger().setLevel(logging.DEBUG)
 
 
-print "initializing pyaudio"
+logging.debug("initializing pyaudio")
 audio = pyaudio.PyAudio()
  
-print "opening audio"
+logging.debug("opening audio")
 # Start Recording
+logging.info("capturing from mic")
 stream = audio.open(format=FORMAT, channels=CHANNELS,
-                rate=RATE, input=True,
-                frames_per_buffer=FRAMES_PER_BUFFER)
+             rate=RATE, input=True,
+             frames_per_buffer=FRAMES_PER_BUFFER)
 
-print "capturing"
 audio_stream = StreamRW(io.BytesIO())
 transcript = Queue.Queue()
 soundprocessor = threading.Thread(target=processSound, args=(audio_stream,transcript,))
+global stop
+stop = False
 soundprocessor.start()
 try:
     logging.debug("initial sample, waiting for sound")
@@ -70,31 +73,44 @@ try:
     volume = 0
     # Wait for sound
     while volume <= SILENCE_THRESHOLD:
-        data = array('h', stream.read(FRAMES_PER_BUFFER))
+        data = stream.read(FRAMES_PER_BUFFER)
+        if not data:
+            break
+        data = array('h', data)
         volume = max(data)
     logging.debug("sound heard")
     w = audio_stream.write(data)
     audio_stream.flush()
+    samples = 0
     while True:
-        data = array('h', stream.read(FRAMES_PER_BUFFER))
+        samples += 1 
+        data = stream.read(FRAMES_PER_BUFFER)
+        if not data:
+            break
+        data = array('h', data)
         volume = max(data)
         if volume <= SILENCE_THRESHOLD:
             consecutive_silent_samples += 1
         else:
+            if consecutive_silent_samples >= PAUSE_LENGTH_IN_SAMPLES:
+                logging.debug("pause ended {}".format(samples))
             consecutive_silent_samples = 0
         w = audio_stream.write(data)
         audio_stream.flush()
-        if consecutive_silent_samples >= PAUSE_LENGTH_IN_SAMPLES:
-            logging.debug("pause detected")
+        if consecutive_silent_samples == PAUSE_LENGTH_IN_SAMPLES:
+            logging.debug("pause detected {}".format(samples))
 except KeyboardInterrupt:
+    logging.info("interrupted")
+finally:
     logging.info("ending")
+    stop = True
+    logging.debug("Waiting for processor to exit")
+    soundprocessor.join()
     # Close the recognizer's stream
     audio_stream.close()
     # Stop Recording
     stream.stop_stream()
     stream.close()
     audio.terminate()
-    logging.debug("Waiting for processor to exit")
-    soundprocessor.join()
     print "Transcript %s" % ";".join(transcript.queue)
     sys.exit()
