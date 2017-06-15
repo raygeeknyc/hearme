@@ -31,10 +31,10 @@ def processSound(audio_stream, transcript):
         encoding=speech.encoding.Encoding.LINEAR16,
         sample_rate_hertz=RATE)
 
-    alternatives = audio_sample.streaming_recognize('en-US',
-        interim_results=True)
     while not stop:
         try:
+            alternatives = audio_sample.streaming_recognize('en-US',
+                interim_results=True)
             # Find transcriptions of the audio content
             for alternative in alternatives:
                 logging.debug('Transcript: {}'.format(alternative.transcript))
@@ -42,14 +42,14 @@ def processSound(audio_stream, transcript):
                 if alternative.is_final:
                     transcript.put(alternative.transcript)
         except ValueError, e:
-            logging.debug("processor: end of audio")
+            logging.warning("processor: end of audio")
             stop = True
         except Exception, e:
             logging.error("Recognition raised {}".format(e))
-    logging.debug("processor audio stream closed")
+    logging.debug("processor ending")
+
 
 logging.getLogger().setLevel(logging.DEBUG)
-
 
 logging.debug("initializing pyaudio")
 audio = pyaudio.PyAudio()
@@ -57,13 +57,13 @@ audio = pyaudio.PyAudio()
 logging.debug("opening audio")
 # Start Recording
 logging.info("capturing from mic")
-stream = audio.open(format=FORMAT, channels=CHANNELS,
+mic_stream = audio.open(format=FORMAT, channels=CHANNELS,
              rate=RATE, input=True,
              frames_per_buffer=FRAMES_PER_BUFFER)
 
 audio_stream = StreamRW(io.BytesIO())
 transcript = Queue.Queue()
-soundprocessor = threading.Thread(target=processSound, args=(audio_stream,transcript,))
+soundprocessor = threading.Thread(target=processSound, args=(audio_stream, transcript,))
 global stop
 stop = False
 soundprocessor.start()
@@ -73,7 +73,7 @@ try:
     volume = 0
     # Wait for sound
     while volume <= SILENCE_THRESHOLD:
-        data = stream.read(FRAMES_PER_BUFFER)
+        data = mic_stream.read(FRAMES_PER_BUFFER)
         if not data:
             break
         data = array('h', data)
@@ -84,7 +84,7 @@ try:
     samples = 0
     while True:
         samples += 1 
-        data = stream.read(FRAMES_PER_BUFFER)
+        data = mic_stream.read(FRAMES_PER_BUFFER)
         if not data:
             break
         data = array('h', data)
@@ -99,6 +99,7 @@ try:
         audio_stream.flush()
         if consecutive_silent_samples == PAUSE_LENGTH_IN_SAMPLES:
             logging.debug("pause detected {}".format(samples))
+    logging.warning("end of data from mic stream")
 except KeyboardInterrupt:
     logging.info("interrupted")
 finally:
@@ -109,8 +110,8 @@ finally:
     # Close the recognizer's stream
     audio_stream.close()
     # Stop Recording
-    stream.stop_stream()
-    stream.close()
+    mic_stream.stop_stream()
+    mic_stream.close()
     audio.terminate()
     print "Transcript %s" % ";".join(transcript.queue)
     sys.exit()

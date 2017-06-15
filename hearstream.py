@@ -38,30 +38,31 @@ class SpeechProcessor:
             alternatives = audio_sample.streaming_recognize('en-US',
                 interim_results=True)
             for alternative in alternatives:
-                print('Finished: {}'.format(alternative.is_final))
-                print('Stability: {}'.format(alternative.stability))
-                print('Confidence: {}'.format(alternative.confidence))
-                if alternative.is_final: print('Transcript: {}'.format(alternative.transcript))
+                #print('Finished: {}'.format(alternative.is_final))
+                #print('Stability: {}'.format(alternative.stability))
+               # print('Confidence: {}'.format(alternative.confidence))
+                if alternative.is_final: print('*** Transcript: {}'.format(alternative.transcript))
             if self._stop:
                 break
         print "done with results"
 
 if __name__ == '__main__':
-    audio_file = io.open(sys.argv[1],'rb')
     audio_stream = StreamRW(io.BytesIO())
     speechProcessor = SpeechProcessor()
     soundthread = threading.Thread(target=speechProcessor.transcribe_streaming, args=(audio_stream,))
     soundthread.start()
-    time.sleep(2)
-    chunks = 0
-    data = audio_file.read(256)
-    while data:
-        audio_stream.write(data)
-        chunks += 1
-        if not chunks % 10:
-            audio_stream.flush()
-        data=audio_file.read(256)
-    audio_file.close()
+    for repeat in range(3):
+        audio_file = io.open(sys.argv[1],'rb')
+        chunks = 0
+        data = audio_file.read(4096)
+        while data:
+            audio_stream.write(data)
+            chunks += 1
+            if not chunks % 10:
+                audio_stream.flush()
+            data=audio_file.read(4096)
+        audio_file.close()
+        time.sleep(2)
     print "stopping"
     speechProcessor.stop()
     soundthread.join()
