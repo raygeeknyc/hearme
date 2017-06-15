@@ -23,31 +23,25 @@ PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0
  
 def processSound(audio_stream, transcript):
     global stop
-    speech_client = speech.Client()
-    audio_sample = speech_client.sample(
-        stream=audio_stream,
-        source_uri=None,
-        encoding=speech.encoding.Encoding.LINEAR16,
-        sample_rate_hertz=RATE)
-
     while not stop:
         try:
-            alternatives = audio_sample.streaming_recognize('en-US',
-                interim_results=True)
-            # Find transcriptions of the audio content
-            for alternative in alternatives:
-                logging.debug('Transcript: {}'.format(alternative.transcript))
-                if alternative.is_final:
-                    logging.debug('Final: {}'.format(alternative.is_final))
-                    logging.debug('Confidence: {}'.format(alternative.confidence))
-                    transcript.put(alternative.transcript)
-        except ValueError, e:
-            logging.warning("processor: end of audio")
-            stop = True
-        except Exception, e:
-            logging.error("Recognition raised {}".format(e))
-    logging.debug("processor ending")
+            recognize_stream = None
+            # Google RPC Call for StreamingRecognize
+            with cloud_speech.beta_create_Speech_stub(make_channel('speech.googleapis.com', 443)) as service:
+                request = self.request_stream()
+                recognize_stream = service.StreamingRecognize(request, DEADLINE_SECS)
+                self.listen_print_loop(recognize_stream)
 
+        except AbortionError as e:
+            self.logger.info("AbortionError: " + str(e))
+        except CancellationError as e:
+            self.logger.info("CancellationError: " + str(e))
+        finally:
+            if self.last_not_final:
+                self.send_event(json.dumps(self.last_not_final))
+
+    self.logger.info("RPC Thread stopped")
+    self.send_event(json.dumps({"status": "stop"}))
 
 logging.getLogger().setLevel(logging.DEBUG)
 
@@ -57,13 +51,13 @@ audio = pyaudio.PyAudio()
 logging.debug("opening audio")
 # Start Recording
 logging.info("capturing from mic")
-mic_stream = audio.open(format=FORMAT, channels=CHANNELS,
+stream = audio.open(format=FORMAT, channels=CHANNELS,
              rate=RATE, input=True,
              frames_per_buffer=FRAMES_PER_BUFFER)
 
 audio_stream = StreamRW(io.BytesIO())
 transcript = Queue.Queue()
-soundprocessor = threading.Thread(target=processSound, args=(audio_stream, transcript,))
+soundprocessor = threading.Thread(target=processSound, args=(audio_stream,transcript,))
 global stop
 stop = False
 soundprocessor.start()
@@ -73,7 +67,7 @@ try:
     volume = 0
     # Wait for sound
     while volume <= SILENCE_THRESHOLD:
-        data = mic_stream.read(FRAMES_PER_BUFFER)
+        data = stream.read(FRAMES_PER_BUFFER)
         if not data:
             break
         data = array('h', data)
@@ -84,7 +78,7 @@ try:
     samples = 0
     while True:
         samples += 1 
-        data = mic_stream.read(FRAMES_PER_BUFFER)
+        data = stream.read(FRAMES_PER_BUFFER)
         if not data:
             logging.debug("no audio data")
             break
@@ -100,7 +94,6 @@ try:
         audio_stream.flush()
         if consecutive_silent_samples == PAUSE_LENGTH_IN_SAMPLES:
             logging.debug("pause detected {}".format(samples))
-    logging.warning("end of data from mic stream")
 except KeyboardInterrupt:
     logging.info("interrupted")
 finally:
@@ -111,8 +104,8 @@ finally:
     # Close the recognizer's stream
     audio_stream.close()
     # Stop Recording
-    mic_stream.stop_stream()
-    mic_stream.close()
+    stream.stop_stream()
+    stream.close()
     audio.terminate()
     print "Transcript %s" % ";".join(transcript.queue)
     sys.exit()
