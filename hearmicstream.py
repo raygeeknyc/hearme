@@ -16,8 +16,7 @@ from google.cloud import speech
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
-FRAMES_PER_BUFFER = 2048
-MAX_SOUNDBITE_SECS = 10
+FRAMES_PER_BUFFER = 4096
 SILENCE_THRESHOLD = 500
 PAUSE_LENGTH_SECS = 0.7
 PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0.5)
@@ -31,15 +30,18 @@ def processSound(audio_stream, transcript):
         encoding=speech.encoding.Encoding.LINEAR16,
         sample_rate_hertz=RATE)
 
-    alternatives = audio_sample.streaming_recognize('en-US',
-        interim_results=True)
     while not stop:
         try:
+            logging.debug("recognizing stream")
+            alternatives = audio_sample.streaming_recognize('en-US',
+                interim_results=True)
+            logging.debug("finding alternatives")
             # Find transcriptions of the audio content
             for alternative in alternatives:
                 logging.debug('Transcript: {}'.format(alternative.transcript))
-                logging.debug('Confidence: {}'.format(alternative.confidence))
                 if alternative.is_final:
+                    logging.debug('Final: {}'.format(alternative.is_final))
+                    logging.debug('Confidence: {}'.format(alternative.confidence))
                     transcript.put(alternative.transcript)
         except ValueError, e:
             logging.debug("processor: end of audio")
@@ -86,6 +88,7 @@ try:
         samples += 1 
         data = stream.read(FRAMES_PER_BUFFER)
         if not data:
+            logging.debug("no audio data")
             break
         data = array('h', data)
         volume = max(data)
