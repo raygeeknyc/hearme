@@ -23,35 +23,27 @@ PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0
  
 def processSound(audio_stream, transcript):
     global stop
-    speech_client = speech.Client()
     while not stop:
         try:
-            audio_sample = speech_client.sample(
-                stream=audio_stream,
-                source_uri=None,
-                encoding=speech.encoding.Encoding.LINEAR16,
-                sample_rate_hertz=RATE)
+            recognize_stream = None
+            # Google RPC Call for StreamingRecognize
+            with cloud_speech.beta_create_Speech_stub(make_channel('speech.googleapis.com', 443)) as service:
+                request = self.request_stream()
+                recognize_stream = service.StreamingRecognize(request, DEADLINE_SECS)
+                self.listen_print_loop(recognize_stream)
 
-            logging.debug("recognizing stream")
-            alternatives = audio_sample.streaming_recognize('en-US',
-                interim_results=True)
-            logging.debug("finding alternatives")
-            # Find transcriptions of the audio content
-            for alternative in alternatives:
-                logging.debug('Transcript: {}'.format(alternative.transcript))
-                if alternative.is_final:
-                    logging.debug('Final: {}'.format(alternative.is_final))
-                    logging.debug('Confidence: {}'.format(alternative.confidence))
-                    transcript.put(alternative.transcript)
-        except ValueError, e:
-            logging.debug("processor: end of audio")
-            stop = True
-        except Exception, e:
-            logging.error("Recognition raised {}".format(e))
-    logging.debug("processor audio stream closed")
+        except AbortionError as e:
+            self.logger.info("AbortionError: " + str(e))
+        except CancellationError as e:
+            self.logger.info("CancellationError: " + str(e))
+        finally:
+            if self.last_not_final:
+                self.send_event(json.dumps(self.last_not_final))
+
+    self.logger.info("RPC Thread stopped")
+    self.send_event(json.dumps({"status": "stop"}))
 
 logging.getLogger().setLevel(logging.DEBUG)
-
 
 logging.debug("initializing pyaudio")
 audio = pyaudio.PyAudio()
