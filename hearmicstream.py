@@ -26,6 +26,7 @@ def processSound(audio_stream, transcript):
     speech_client = speech.Client()
     while not stop:
         try:
+            logging.debug("audio stream closed? {}".format(audio_stream.closed))
             audio_sample = speech_client.sample(
                 stream=audio_stream,
                 source_uri=None,
