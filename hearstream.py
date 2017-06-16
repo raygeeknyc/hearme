@@ -62,7 +62,7 @@ if __name__ == '__main__':
                 audio_stream.flush()
             data=audio_file.read(4096)
         audio_file.close()
-        time.sleep(2)
+        time.sleep(5)
     print "stopping"
     speechProcessor.stop()
     soundthread.join()

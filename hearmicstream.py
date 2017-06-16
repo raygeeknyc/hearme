@@ -23,15 +23,15 @@ PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0
  
 def processSound(audio_stream, transcript):
     global stop
-    speech_client = speech.Client()
-    audio_sample = speech_client.sample(
-        stream=audio_stream,
-        source_uri=None,
-        encoding=speech.encoding.Encoding.LINEAR16,
-        sample_rate_hertz=RATE)
-
     while not stop:
         try:
+            speech_client = speech.Client()  # I don't see why I have to make a new client for each sample. Seems wrong, I am hanging the client somehow.
+
+            audio_sample = speech_client.sample(
+                stream=audio_stream,
+                encoding=speech.encoding.Encoding.LINEAR16,
+                sample_rate_hertz=RATE)
+
             alternatives = audio_sample.streaming_recognize('en-US',
                 interim_results=True)
             # Find transcriptions of the audio content
@@ -80,7 +80,6 @@ try:
         volume = max(data)
     logging.debug("sound heard")
     w = audio_stream.write(data)
-    audio_stream.flush()
     samples = 0
     while True:
         samples += 1 
@@ -97,7 +96,8 @@ try:
                 logging.debug("pause ended {}".format(samples))
             consecutive_silent_samples = 0
         w = audio_stream.write(data)
-        audio_stream.flush()
+        if not samples % 5:
+            audio_stream.flush()
         if consecutive_silent_samples == PAUSE_LENGTH_IN_SAMPLES:
             logging.debug("pause detected {}".format(samples))
     logging.warning("end of data from mic stream")
@@ -106,13 +106,13 @@ except KeyboardInterrupt:
 finally:
     logging.info("ending")
     stop = True
-    logging.debug("Waiting for processor to exit")
-    soundprocessor.join()
-    # Close the recognizer's stream
-    audio_stream.close()
     # Stop Recording
     mic_stream.stop_stream()
     mic_stream.close()
     audio.terminate()
+    logging.debug("Waiting for processor to exit")
+    soundprocessor.join()
+    # Close the recognizer's stream
+    audio_stream.close()
     print "Transcript %s" % ";".join(transcript.queue)
     sys.exit()
