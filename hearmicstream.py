@@ -16,17 +16,19 @@ from google.cloud import speech
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
-FRAMES_PER_BUFFER = 4096
+FRAMES_PER_BUFFER = 2048
 SILENCE_THRESHOLD = 500
-PAUSE_LENGTH_SECS = 0.7
+PAUSE_LENGTH_SECS = 1.0
+AUDIO_BUFFER_SECS = 2.0
 PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0.5)
+AUDIO_STREAM_BUFFER_SIZE = RATE * int(PAUSE_LENGTH_SECS + AUDIO_BUFFER_SECS + 1) 
  
 def processSound(audio_stream, transcript):
     global stop
+    speech_client = speech.Client()
+
     while not stop:
         try:
-            speech_client = speech.Client()  # I don't see why I have to make a new client for each sample. Seems wrong, I am hanging the client somehow.
-
             audio_sample = speech_client.sample(
                 stream=audio_stream,
                 encoding=speech.encoding.Encoding.LINEAR16,
@@ -61,7 +63,7 @@ mic_stream = audio.open(format=FORMAT, channels=CHANNELS,
              rate=RATE, input=True,
              frames_per_buffer=FRAMES_PER_BUFFER)
 
-audio_stream = StreamRW(io.BytesIO())
+audio_stream = StreamRW(io.BytesIO(), AUDIO_STREAM_BUFFER_SIZE)
 transcript = Queue.Queue()
 soundprocessor = threading.Thread(target=processSound, args=(audio_stream, transcript,))
 global stop
@@ -103,6 +105,8 @@ try:
     logging.warning("end of data from mic stream")
 except KeyboardInterrupt:
     logging.info("interrupted")
+except Exception, e:
+    logging.excpeption("Error: {}".format(str(e)))
 finally:
     logging.info("ending")
     stop = True
