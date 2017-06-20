@@ -1,111 +1,167 @@
-import Queue
-import time
-from array import array
-import threading
-import sys
-import pyaudio
-import io
-from streamrw import StreamRW
+#!/usr/bin/env python
+
+# Copyright 2017 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Google Cloud Speech API sample application using the streaming API.
+
+Example usage:
+    python transcribe_streaming.py resources/audio.raw
+"""
+
+# [START import_libraries]
+from __future__ import division
+
 import logging
- 
-# Import the Google Cloud client library
+import re
+import signal
+import sys
+
 from google.cloud import speech
+import grpc
+import pyaudio
+from six.moves import queue
+# [END import_libraries]
 
-# first you have to authenticate for the default application: gcloud auth application-default login
-
-FORMAT = pyaudio.paInt16
-CHANNELS = 1
+# Audio recording parameters
 RATE = 16000
-FRAMES_PER_BUFFER = 4096
-SILENCE_THRESHOLD = 500
-PAUSE_LENGTH_SECS = 0.7
-PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0.5)
- 
-def processSound(audio_stream, transcript):
-    global stop
-    while not stop:
-        try:
-            recognize_stream = None
-            # Google RPC Call for StreamingRecognize
-            with cloud_speech.beta_create_Speech_stub(make_channel('speech.googleapis.com', 443)) as service:
-                request = self.request_stream()
-                recognize_stream = service.StreamingRecognize(request, DEADLINE_SECS)
-                self.listen_print_loop(recognize_stream)
+CHUNK = int(RATE / 10)  # 100ms
 
-        except AbortionError as e:
-            self.logger.info("AbortionError: " + str(e))
-        except CancellationError as e:
-            self.logger.info("CancellationError: " + str(e))
-        finally:
-            if self.last_not_final:
-                self.send_event(json.dumps(self.last_not_final))
+class MicAsFile(object):
+    """Opens a recording stream as a file-like object."""
+    def __init__(self, rate, chunk):
+        self._rate = rate
+        self._chunk = chunk
 
-    self.logger.info("RPC Thread stopped")
-    self.send_event(json.dumps({"status": "stop"}))
+        # Create a thread-safe buffer of audio data
+        self._buff = queue.Queue()
+        self.closed = True
 
-logging.getLogger().setLevel(logging.DEBUG)
+    def __enter__(self):
+        self._audio_interface = pyaudio.PyAudio()
+        self._audio_stream = self._audio_interface.open(
+            format=pyaudio.paInt16,
+            # The API currently only supports 1-channel (mono) audio
+            # https://goo.gl/z757pE
+            channels=1, rate=self._rate,
+            input=True, frames_per_buffer=self._chunk,
+            # Run the audio stream asynchronously to fill the buffer object.
+            # This is necessary so that the input device's buffer doesn't
+            # overflow while the calling thread makes network requests, etc.
+            stream_callback=self._fill_buffer,
+        )
 
-logging.debug("initializing pyaudio")
-audio = pyaudio.PyAudio()
- 
-logging.debug("opening audio")
-# Start Recording
-logging.info("capturing from mic")
-stream = audio.open(format=FORMAT, channels=CHANNELS,
-             rate=RATE, input=True,
-             frames_per_buffer=FRAMES_PER_BUFFER)
+        self.closed = False
 
-audio_stream = StreamRW(io.BytesIO())
-transcript = Queue.Queue()
-soundprocessor = threading.Thread(target=processSound, args=(audio_stream,transcript,))
-global stop
-stop = False
-soundprocessor.start()
-try:
-    logging.debug("initial sample, waiting for sound")
-    consecutive_silent_samples = 0
-    volume = 0
-    # Wait for sound
-    while volume <= SILENCE_THRESHOLD:
-        data = stream.read(FRAMES_PER_BUFFER)
-        if not data:
-            break
-        data = array('h', data)
-        volume = max(data)
-    logging.debug("sound heard")
-    w = audio_stream.write(data)
-    audio_stream.flush()
-    samples = 0
-    while True:
-        samples += 1 
-        data = stream.read(FRAMES_PER_BUFFER)
-        if not data:
-            logging.debug("no audio data")
-            break
-        data = array('h', data)
-        volume = max(data)
-        if volume <= SILENCE_THRESHOLD:
-            consecutive_silent_samples += 1
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self._audio_stream.stop_stream()
+        self._audio_stream.close()
+        self.closed = True
+        # Flush out the read, just in case
+        self._buff.put(None)
+        self._audio_interface.terminate()
+
+    def _fill_buffer(self, in_data, frame_count, time_info, status_flags):
+        """Continuously collect data from the audio stream, into the buffer."""
+        self._buff.put(in_data)
+        return None, pyaudio.paContinue
+
+    def read(self, chunk_size):
+        if self.closed:
+            return
+
+        # Use a blocking get() to ensure there's at least one chunk of data.
+        data = [self._buff.get()]
+
+        # Now consume whatever other data's still buffered.
+        while True:
+            try:
+                data.append(self._buff.get(block=False))
+            except queue.Empty:
+                break
+
+        if self.closed:
+            return
+        return b''.join(data)
+# [END audio_stream]
+
+
+def listen_print_loop(results_gen):
+    """Iterates through server responses and prints them.
+
+    The results_gen passed is a generator that will block until a response
+    is provided by the server. When the transcription response comes, print it.
+
+    In this case, responses are provided for interim results as well. If the
+    response is an interim one, print a line feed at the end of it, to allow
+    the next result to overwrite it, until the response is a final one. For the
+    final one, print a newline to preserve the finalized transcription.
+    """
+    num_chars_printed = 0
+    print "listen loop"
+    for result in results_gen:
+        if not result.alternatives:
+            continue
+
+        # Display the top transcription
+        transcript = result.transcript
+
+        # Display interim results, but with a carriage return at the end of the
+        # line, so subsequent lines will overwrite them.
+        #
+        # If the previous result was longer than this one, we need to print
+        # some extra spaces to overwrite the previous result
+        overwrite_chars = ' ' * max(0, num_chars_printed - len(transcript))
+
+        if not result.is_final:
+            sys.stdout.write(transcript + overwrite_chars + '\r')
+            sys.stdout.flush()
+
+            num_chars_printed = len(transcript)
+
         else:
-            if consecutive_silent_samples >= PAUSE_LENGTH_IN_SAMPLES:
-                logging.debug("pause ended {}".format(samples))
-            consecutive_silent_samples = 0
-        w = audio_stream.write(data)
-        audio_stream.flush()
-        if consecutive_silent_samples == PAUSE_LENGTH_IN_SAMPLES:
-            logging.debug("pause detected {}".format(samples))
-except KeyboardInterrupt:
-    logging.info("interrupted")
-finally:
-    logging.info("ending")
-    stop = True
-    logging.debug("Waiting for processor to exit")
-    soundprocessor.join()
-    # Close the recognizer's stream
-    audio_stream.close()
-    # Stop Recording
-    stream.stop_stream()
-    stream.close()
-    audio.terminate()
-    print "Transcript %s" % ";".join(transcript.queue)
-    sys.exit()
+            print(transcript + overwrite_chars)
+
+            # Exit recognition if any of the transcribed phrases could be
+            # one of our keywords.
+            if re.search(r'\b(exit|quit)\b', transcript, re.I):
+                print('Exiting..')
+                break
+
+            num_chars_printed = 0
+    print "/listen loop"
+
+
+def main():
+    speech_client = speech.Client()
+
+    with MicAsFile(RATE, CHUNK) as stream:
+        audio_sample = speech_client.sample(
+            stream=stream,
+            encoding=speech.encoding.Encoding.LINEAR16,
+            sample_rate_hertz=RATE)
+        # See http://g.co/cloud/speech/docs/languages
+        # for a list of supported languages.
+        language_code = 'en-US'  # a BCP-47 language tag
+        results_gen = audio_sample.streaming_recognize(
+                language_code=language_code, interim_results=True)
+
+        # Now, put the transcription responses to use.
+        listen_print_loop(results_gen)
+
+
+if __name__ == '__main__':
+    main()

@@ -16,19 +16,22 @@ from google.cloud import speech
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
-FRAMES_PER_BUFFER = 2048
+FRAMES_PER_BUFFER = 4096
 SILENCE_THRESHOLD = 500
 PAUSE_LENGTH_SECS = 1.0
 AUDIO_BUFFER_SECS = 2.0
 PAUSE_LENGTH_IN_SAMPLES = int((PAUSE_LENGTH_SECS * RATE / FRAMES_PER_BUFFER) + 0.5)
-AUDIO_STREAM_BUFFER_SIZE = RATE * int(PAUSE_LENGTH_SECS + AUDIO_BUFFER_SECS + 1) 
+AUDIO_STREAM_BUFFER_SIZE = int(FRAMES_PER_BUFFER * 2 * (RATE / FRAMES_PER_BUFFER) * (PAUSE_LENGTH_SECS + AUDIO_BUFFER_SECS))
+AUDIO_STREAM_BUFFER_SIZE = 32768
  
 def processSound(audio_stream, transcript):
     global stop
     speech_client = speech.Client()
+    logging.debug("created client")
 
     while not stop:
         try:
+            logging.debug("sampling")
             audio_sample = speech_client.sample(
                 stream=audio_stream,
                 encoding=speech.encoding.Encoding.LINEAR16,
@@ -68,45 +71,28 @@ transcript = Queue.Queue()
 soundprocessor = threading.Thread(target=processSound, args=(audio_stream, transcript,))
 global stop
 stop = False
-soundprocessor.start()
 try:
-    logging.debug("initial sample, waiting for sound")
-    consecutive_silent_samples = 0
-    volume = 0
-    # Wait for sound
-    while volume <= SILENCE_THRESHOLD:
-        data = mic_stream.read(FRAMES_PER_BUFFER)
-        if not data:
-            break
-        data = array('h', data)
-        volume = max(data)
-    logging.debug("sound heard")
-    w = audio_stream.write(data)
+    logging.debug("initial sample")
+    data = mic_stream.read(FRAMES_PER_BUFFER)
+    logging.debug("staring speech processor thread")
+    soundprocessor.start()
     samples = 0
+    frames_buffered = 1
     while True:
         samples += 1 
-        data = mic_stream.read(FRAMES_PER_BUFFER)
-        if not data:
-            logging.debug("no audio data")
-            break
-        data = array('h', data)
-        volume = max(data)
-        if volume <= SILENCE_THRESHOLD:
-            consecutive_silent_samples += 1
-        else:
-            if consecutive_silent_samples >= PAUSE_LENGTH_IN_SAMPLES:
-                logging.debug("pause ended {}".format(samples))
-            consecutive_silent_samples = 0
-        w = audio_stream.write(data)
-        if not samples % 5:
+        frames_buffered += 1
+        data += mic_stream.read(FRAMES_PER_BUFFER)
+        logging.debug("mic read {} bytes".format(len(data)))
+        if frames_buffered == 8:
+            frames_buffered = 0
+            w = audio_stream.write(data)
             audio_stream.flush()
-        if consecutive_silent_samples == PAUSE_LENGTH_IN_SAMPLES:
-            logging.debug("pause detected {}".format(samples))
+            data = ''
     logging.warning("end of data from mic stream")
 except KeyboardInterrupt:
     logging.info("interrupted")
 except Exception, e:
-    logging.excpeption("Error: {}".format(str(e)))
+    logging.exception("Error: {}".format(str(e)))
 finally:
     logging.info("ending")
     stop = True
