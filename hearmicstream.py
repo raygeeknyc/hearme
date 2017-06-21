@@ -5,8 +5,8 @@ import threading
 import sys
 import pyaudio
 import io
-from streamrw import StreamRW
 import logging
+from fedstream import FedStream
  
 # Import the Google Cloud client library
 from google.cloud import speech
@@ -47,7 +47,7 @@ def processSound(audio_stream, transcript):
                     logging.debug('Confidence: {}'.format(alternative.confidence))
                     transcript.put(alternative.transcript)
         except ValueError, e:
-            logging.warning("processor: end of audio")
+            logging.warning("processor: end of audio {}".format(str(e)))
             stop = True
         except Exception, e:
             logging.error("Recognition raised {}".format(e))
@@ -66,7 +66,8 @@ mic_stream = audio.open(format=FORMAT, channels=CHANNELS,
              rate=RATE, input=True,
              frames_per_buffer=FRAMES_PER_BUFFER)
 
-audio_stream = StreamRW(io.BytesIO(), AUDIO_STREAM_BUFFER_SIZE)
+audio_buffer = Queue.Queue()
+audio_stream = FedStream(audio_buffer)
 transcript = Queue.Queue()
 soundprocessor = threading.Thread(target=processSound, args=(audio_stream, transcript,))
 global stop
@@ -81,13 +82,9 @@ try:
     while True:
         samples += 1 
         frames_buffered += 1
-        data += mic_stream.read(FRAMES_PER_BUFFER)
+        data = mic_stream.read(FRAMES_PER_BUFFER)
         logging.debug("mic read {} bytes".format(len(data)))
-        if frames_buffered == 8:
-            frames_buffered = 0
-            w = audio_stream.write(data)
-            audio_stream.flush()
-            data = ''
+        audio_buffer.put(data)
     logging.warning("end of data from mic stream")
 except KeyboardInterrupt:
     logging.info("interrupted")
@@ -100,9 +97,9 @@ finally:
     mic_stream.stop_stream()
     mic_stream.close()
     audio.terminate()
-    logging.debug("Waiting for processor to exit")
-    soundprocessor.join()
     # Close the recognizer's stream
     audio_stream.close()
+    logging.debug("Waiting for processor to exit")
+    soundprocessor.join()
     print "Transcript %s" % ";".join(transcript.queue)
     sys.exit()
