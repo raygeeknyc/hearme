@@ -29,14 +29,14 @@ def processSound(audio_stream, transcript):
     speech_client = speech.Client()
     logging.debug("created client")
 
+    audio_sample = speech_client.sample(
+        stream=audio_stream,
+        encoding=speech.encoding.Encoding.LINEAR16,
+        sample_rate_hertz=RATE)
+
     while not stop:
         try:
             logging.debug("sampling")
-            audio_sample = speech_client.sample(
-                stream=audio_stream,
-                encoding=speech.encoding.Encoding.LINEAR16,
-                sample_rate_hertz=RATE)
-
             alternatives = audio_sample.streaming_recognize('en-US',
                 interim_results=True)
             # Find transcriptions of the audio content
