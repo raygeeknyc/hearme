@@ -1,3 +1,7 @@
+#####
+# Raymond Blum <raygeeknyc@gmail.com>
+# Licensed under GNU-GPL-3.0-or-later
+#####
 # Import the packages we need for reading args and files
 import io
 import sys

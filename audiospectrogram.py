@@ -1,3 +1,7 @@
+#####
+# Raymond Blum <raygeeknyc@gmail.com>
+# Licensed under GNU-GPL-3.0-or-later
+#####
 import pyaudio
 import struct
 import matplotlib.pyplot as plt

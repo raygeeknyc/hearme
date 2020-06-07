@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+#####
+# Raymond Blum <raygeeknyc@gmail.com>
+# Licensed under GNU-GPL-3.0-or-later
+#####
 
 from vosk import Model, KaldiRecognizer, SetLogLevel
 import sys
