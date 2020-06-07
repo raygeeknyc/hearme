@@ -2,8 +2,8 @@ import io
 import logging
 
 class StreamRW(io.BufferedRandom):
-    def __init__(self, raw, buffer_size):
-        super(StreamRW, self).__init__(raw, buffer_size)
+    def __init__(self):
+        super(StreamRW, self).__init__()
         self.seek(0)
 
     def open(self):
@@ -11,7 +11,7 @@ class StreamRW(io.BufferedRandom):
         self.read_offset = 0
         self.write_offset = 0
         super(StreamRW, self).open()
-        
+
     def close(self):
         logging.debug("close RW Stream")
         super(StreamRW, self).close()

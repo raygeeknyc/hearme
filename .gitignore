@@ -1,0 +1,4 @@
+# Trained model too large to check in, download instructions in code
+vosk-model
+# Generated files
+*.pyc
