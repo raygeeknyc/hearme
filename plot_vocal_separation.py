@@ -80,12 +80,12 @@ def main(audio_filename):
     logging.debug("foreground({}) max {} power {}: {}".format(len(foreground_audio), audioop.max(background_audio,2), audioop.rms(foreground_audio,2), foreground_audio))
     logging.debug("background({}) max {} power {}: {}".format(len(background_audio), audioop.max(background_audio,2), audioop.rms(background_audio,2), background_audio))
     
-    soundfile.write('full.wav', full_audio, sr)
-    play_audio_file('full.wav')
-    soundfile.write('fg.wav', foreground_audio, sr)
-    play_audio_file('fg.wav')
+    soundfile.write('full.WAV', full_audio, sr)
+    play_audio_file('full.WAV')
+    soundfile.write('fg.WAV', foreground_audio, sr)
+    play_audio_file('fg.WAV')
     soundfile.write('bg.WAV', background_audio, sr)
-    play_audio_file('bg.wav')
+    play_audio_file('bg.WAV')
 
 if __name__=="__main__":
     if len(sys.argv) == 2:

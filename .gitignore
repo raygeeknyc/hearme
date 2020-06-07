@@ -2,3 +2,6 @@
 vosk-model
 # Generated files
 *.pyc
+full.WV
+bg.WAV
+fg.WAV
