@@ -48,6 +48,22 @@ def plot_fft_powers_peaks(plots, fft, powers, average_powers, peaks):
     plt.show()
     plt.pause(0.00001)
     
+def get_audio(mic_stream):
+    data = np.frombuffer(mic_stream.read(CHUNK_SIZE,exception_on_overflow=False),dtype=np.int16)
+    data = data * np.hanning(len(data))
+    return data
+
+def get_fft(audio_chunk):
+    fft = abs(np.fft.fft(audio_chunk).real)
+    fft = fft[:int(len(fft)/2)] # keep only first half
+    return fft
+
+def get_peak(fft):
+    frequency = np.fft.fftfreq(CHUNK_SIZE,1.0/RATE)
+    frequency = frequency[:int(len(frequency)/2)] # keep only first half
+    freq_peak = frequency[np.where(fft==np.max(fft))[0][0]]+1
+    return freq_peak
+
 def main(capture_secs):
     p=pyaudio.PyAudio() # start the PyAudio class
     mic_stream=p.open(format=pyaudio.paInt16,channels=1,rate=RATE,input=True,
@@ -60,16 +76,13 @@ def main(capture_secs):
     powers = []
     average_powers = []
     for i in range(0, int(RATE / CHUNK_SIZE * capture_secs)):
-        data = np.frombuffer(mic_stream.read(CHUNK_SIZE,exception_on_overflow=False),dtype=np.int16)
-        data = data * np.hanning(len(data))
-        fft = abs(np.fft.fft(data).real)
-        fft = fft[:int(len(fft)/2)] # keep only first half
-        frequency = np.fft.fftfreq(CHUNK_SIZE,1.0/RATE)
-        frequency = frequency[:int(len(frequency)/2)] # keep only first half
-        freqPeak = frequency[np.where(fft==np.max(fft))[0][0]]+1
-        print("peak frequency: %d Hz"%freqPeak)
-        peaks.append(freqPeak)
-        power = get_rms(data)
+        chunk = get_audio(mic_stream)
+        fft = get_fft(chunk)
+        peak_frequency = get_peak(fft)
+
+        print("peak frequency: %d Hz"%peak_frequency)
+        peaks.append(peak_frequency)
+        power = get_rms(chunk)
         powers.append(power)
         average_power = statistics.mean(powers[_POWER_WINDOW:])
         average_powers.append(average_power)
