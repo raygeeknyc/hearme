@@ -1,3 +1,4 @@
+#!/opt/local/bin/python3
 from scipy import signal
 from scipy.io import wavfile
 from scipy.fftpack import fft, ifft,fftfreq
@@ -40,4 +41,3 @@ def main(filename):
 
 if len(sys.argv) == 2:
     main(sys.argv[1])
-

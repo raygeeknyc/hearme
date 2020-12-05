@@ -1,3 +1,4 @@
+#!/opt/local/bin/python3
 #####
 # Raymond Blum <raygeeknyc@gmail.com>
 # Licensed under GNU-GPL-3.0-or-later
