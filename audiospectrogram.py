@@ -1,3 +1,4 @@
+#!/opt/local/bin/python3
 #####
 # Raymond Blum <raygeeknyc@gmail.com>
 # Licensed under GNU-GPL-3.0-or-later
@@ -17,12 +18,13 @@ CHANNELS = 1
 RATE = 48000
 CHUNK = int(RATE * INTERVAL)
 
-stream = mic.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, output=True, frames_per_buffer=CHUNK)
+def main():
+  stream = mic.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, output=True, frames_per_buffer=CHUNK)
 
-plt.ylabel('Frequency [Hz]')
-plt.xlabel('Time [sec]')
+  plt.ylabel('Frequency [Hz]')
+  plt.xlabel('Time [sec]')
 
-while True:
+  while True:
     data = stream.read(CHUNK, exception_on_overflow=False)
     data = np.frombuffer(data, dtype='b')
     f, t, Sxx = signal.spectrogram(data, fs=CHUNK)
@@ -31,6 +33,10 @@ while True:
     plt.pcolormesh(t, f, dBS)
     plt.pause(0.001)
     
-stream.stop_stream()
-stream.close()
-mic.terminate()
+  stream.stop_stream()
+  stream.close()
+  mic.terminate()
+
+if __name__=="__main__":
+  print('Ctrl C to exit')
+  main()

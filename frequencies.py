@@ -14,8 +14,8 @@ logging.getLogger('').setLevel(logging.INFO)
 
 np.set_printoptions(suppress=True) # don't use scientific notation
 
-CHUNK_SIZE = 4096 # number of data points to read at a time
-RATE = 44100 # Sampling rate of the input microphone
+CHUNK_SIZE = 8192 # number of data points to read at a time
+RATE = 22000 # Sampling rate of the input microphone
 POWER_SAMPLE_SECS=2
 _POWER_WINDOW=-1*int(RATE / CHUNK_SIZE * POWER_SAMPLE_SECS)
 
@@ -76,7 +76,8 @@ def main(capture_secs):
     peaks = []
     powers = []
     average_powers = []
-    for i in range(0, int(RATE / CHUNK_SIZE * capture_secs)):
+    capture_chunks =  int(RATE / CHUNK_SIZE * capture_secs)
+    for i in range(0, capture_chunks):
         chunk = get_audio(mic_stream)
         fft = get_fft(chunk)
         peak_frequency = get_peak(fft)

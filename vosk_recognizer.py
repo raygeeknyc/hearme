@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/local/bin/python3
 #####
 # Raymond Blum <raygeeknyc@gmail.com>
 # Licensed under GNU-GPL-3.0-or-later
@@ -20,10 +20,6 @@ def play_audio_file(audio_filename):
     wave_obj = simpleaudio.WaveObject.from_wave_file(audio_filename)
     play_obj = wave_obj.play()
     play_obj.wait_done()  # Wait until sound has finished playing
-
-if not os.path.exists(MODEL_PATH):
-    logging.error("Please download the model from https://github.com/alphacep/vosk-api/blob/master/doc/models.md and unpack as '%s' in the current folder.", MODEL_PATH)
-    sys.exit(1)
 
 def main(audio_filename):
     wf = wave.open(audio_filename, "rb")
@@ -47,9 +43,13 @@ def main(audio_filename):
     play_audio_file(audio_filename)
     
 if __name__=="__main__":
-    if len(sys.argv) == 2:
-        main(sys.argv[1])
-        sys.exit(0)
-    else:
-        logging.error('%s audio_file', sys.argv[0])
-        sys.exit(255)
+  if not os.path.exists(MODEL_PATH):
+      logging.error("Please download the model from https://github.com/alphacep/vosk-api/blob/master/doc/models.md and unpack as '%s' in the current folder.", MODEL_PATH)
+      sys.exit(-1)
+
+  if len(sys.argv) == 2:
+      main(sys.argv[1])
+      sys.exit(0)
+  else:
+      logging.error('%s audio_file', sys.argv[0])
+      sys.exit(-1)
